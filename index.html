@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mon menu de la semaine — Générateur famille</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <h1>🍽️ Mon menu de la semaine</h1>
+    <p class="subtitle">Recettes de saison, équilibrées, faciles à préparer en famille</p>
+  </header>
+
+  <form id="generator-form">
+    <div class="audience-block">
+      <label class="audience-label">Pour qui ?</label>
+      <div class="audience-options" role="radiogroup">
+        <label class="audience-option">
+          <input type="radio" name="audience" value="family" checked>
+          <span>👨‍👩‍👧 Famille (sans bébé)</span>
+        </label>
+        <label class="audience-option">
+          <input type="radio" name="audience" value="family-baby">
+          <span>👨‍👩‍👧‍🍼 Famille + bébé</span>
+        </label>
+        <label class="audience-option">
+          <input type="radio" name="audience" value="baby">
+          <span>🍼 Bébé seul</span>
+        </label>
+      </div>
+    </div>
+
+    <div id="baby-birthdate-block" class="baby-birthdate-block" hidden>
+      <label>
+        Date de naissance du bébé
+        <input type="date" id="baby-birthdate">
+      </label>
+      <div id="baby-age-info" class="baby-age-info"></div>
+    </div>
+
+    <div class="row">
+      <label>
+        Nombre de repas
+        <input type="number" id="meals" min="1" max="30" value="5" required>
+      </label>
+      <label>
+        Nombre de personnes
+        <input type="number" id="persons" min="1" max="12" value="4" required>
+      </label>
+    </div>
+
+    <div class="precisions-block">
+      <label class="precisions-label">
+        Précisions (optionnel)
+        <span class="precisions-hint">Ex : « sans poisson, on aime les pâtes, pas de champignons »</span>
+      </label>
+      <div class="precisions-input">
+        <textarea id="precisions" rows="2" placeholder="Tapez ou cliquez sur le micro pour parler..."></textarea>
+        <button type="button" id="mic-btn" title="Parler" aria-label="Activer le micro">🎤</button>
+      </div>
+      <div id="speech-status" class="speech-status"></div>
+    </div>
+
+    <details>
+      <summary>Préférences alimentaires (optionnel)</summary>
+      <div class="row diet-row">
+        <label class="check"><input type="checkbox" name="diet" value="Végétarien"> Végétarien</label>
+        <label class="check"><input type="checkbox" name="diet" value="Vegan"> Vegan</label>
+        <label class="check"><input type="checkbox" name="diet" value="Sans gluten"> Sans gluten</label>
+        <label class="check"><input type="checkbox" name="diet" value="Sans PLV"> Sans lactose</label>
+        <label class="check"><input type="checkbox" name="diet" value="Sans oeuf"> Sans œuf</label>
+      </div>
+    </details>
+
+    <details>
+      <summary>🔑 Clé API Anthropic (pour les précisions)</summary>
+      <div class="api-block">
+        <p class="hint-small">Nécessaire pour comprendre vos précisions en langage naturel. Stockée uniquement dans votre navigateur. <a href="https://console.anthropic.com/settings/keys" target="_blank">Créer une clé</a></p>
+        <input type="password" id="api-key" placeholder="sk-ant-..." autocomplete="off">
+      </div>
+    </details>
+
+    <button type="submit" id="submit-btn">✨ Générer mon menu</button>
+  </form>
+
+  <main id="results"></main>
+
+  <footer>
+    <p>Recettes par <a href="https://www.cuisinez-pour-bebe.fr/" target="_blank">cuisinez-pour-bebe.fr</a></p>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
