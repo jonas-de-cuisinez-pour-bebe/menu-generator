@@ -23,7 +23,7 @@ function audienceFilters(audience, ageBucket) {
   return ['age:"pour la famille"'];
 }
 
-async function searchRecipes({ season, audience = 'family', ageBucket = null, diet = [], excludeDiet = [], query = '', hitsPerPage = 500 }) {
+async function searchRecipes({ season, audience = 'family', ageBucket = null, diet = [], excludeDiet = [], query = '', optionalWords = [], hitsPerPage = 500 }) {
   const filterParts = [
     ...audienceFilters(audience, ageBucket),
     `season:"${season}"`,
@@ -34,9 +34,15 @@ async function searchRecipes({ season, audience = 'family', ageBucket = null, di
   const filters = filterParts.join(' AND ');
 
   const url = `https://${ALGOLIA_APP_ID}-dsn.algolia.net/1/indexes/${ALGOLIA_INDEX}/query`;
-  const body = {
-    params: `hitsPerPage=${hitsPerPage}&filters=${encodeURIComponent(filters)}&query=${encodeURIComponent(query)}`
-  };
+  const params = [
+    `hitsPerPage=${hitsPerPage}`,
+    `filters=${encodeURIComponent(filters)}`,
+    `query=${encodeURIComponent(query)}`
+  ];
+  if (optionalWords.length) {
+    params.push(`optionalWords=${encodeURIComponent(JSON.stringify(optionalWords))}`);
+  }
+  const body = { params: params.join('&') };
   const res = await fetch(url, {
     method: 'POST',
     headers: {
@@ -158,6 +164,13 @@ Règles importantes :
 7. "1 quiche", "2 pâtes" -> specific (compte exact). "on aime les pâtes" -> include (préférence).
 8. Si "1 quiche et 4 autres plats" : meals=5. Si juste "1 quiche" sans nombre total : meals=null.
 9. NE renseigne meals QUE si l'utilisateur mentionne EXPLICITEMENT un nombre total ("X repas", "X plats"). N'INFÈRE JAMAIS meals en comptant les items listés. Ex: "lasagnes pizza salade" = meals:null (ne compte PAS 3).
+10. La recherche s'effectue sur les titres et ingrédients de recettes françaises bébé/famille. Si l'utilisateur mentionne une CATÉGORIE générique (mijoté, gratin, soupe, sauté, rôti, salade, tarte, crumble, curry, wok...), expanse-la en plusieurs noms concrets de plats que l'on peut trouver dans des titres. Exemples :
+   - "mijoté" / "plats mijotés" -> ["bourguignon","blanquette","tajine","ragoût","bœuf carottes","mafé","colombo","pot-au-feu","navarin"]
+   - "soupe" -> ["soupe","velouté","minestrone","bouillon"]
+   - "gratin" -> ["gratin","tartiflette","parmentier","lasagne"]
+   - "salade" -> ["salade","taboulé","ceviche"]
+   - "wok / sauté" -> ["wok","sauté","poêlée","stir-fry"]
+   Mets ces mots dans le champ "include" (préférence douce qui orientera le ranking) ou dans "specific.keyword" si un nombre est demandé. NE renvoie JAMAIS un terme générique comme "mijoté" tout seul, il ne matche rien.
 
 Exemples :
 "sans poisson cette semaine" -> {"specific":[],"diet":[],"exclude_diet":["Avec poisson"],"include":[],"exclude":[],"meals":null,"persons":null}
@@ -166,7 +179,9 @@ Exemples :
 "on aime les pâtes et le riz, pas de champignons" -> {"specific":[],"diet":[],"exclude_diet":[],"include":["pâte","riz"],"exclude":["champignon"],"meals":null,"persons":null}
 "je veux 1 quiche et 4 autres plats" -> {"specific":[{"keyword":"quiche","count":1}],"diet":[],"exclude_diet":[],"include":[],"exclude":[],"meals":5,"persons":null}
 "2 plats avec du poulet et 3 plats variés sans poisson" -> {"specific":[{"keyword":"poulet","count":2}],"diet":[],"exclude_diet":["Avec poisson"],"include":[],"exclude":[],"meals":5,"persons":null}
-"7 repas pour 5 personnes, végétarien" -> {"specific":[],"diet":["Végétarien"],"exclude_diet":[],"include":[],"exclude":[],"meals":7,"persons":5}`;
+"7 repas pour 5 personnes, végétarien" -> {"specific":[],"diet":["Végétarien"],"exclude_diet":[],"include":[],"exclude":[],"meals":7,"persons":5}
+"des plats mijotés" -> {"specific":[],"diet":[],"exclude_diet":[],"include":["bourguignon","blanquette","tajine","ragoût","bœuf carottes","mafé","colombo","pot-au-feu","navarin"],"exclude":[],"meals":null,"persons":null}
+"1 soupe et 4 autres plats" -> {"specific":[{"keyword":"soupe velouté minestrone bouillon","count":1}],"diet":[],"exclude_diet":[],"include":[],"exclude":[],"meals":5,"persons":null}`;
 
 const SEASON_WORDS = /^(saison|saisonni[eè]re?|de saison|saisonnier)$/i;
 
@@ -207,16 +222,34 @@ async function parsePrecisions(text) {
   return sanitizeFilters(JSON.parse(cleaned));
 }
 
+function recipeHaystack(r) {
+  return [
+    (r.title_name || '').toLowerCase(),
+    ...(r.ingredients || []).map(i => i.toLowerCase())
+  ].join(' | ');
+}
+
 function applyExcludeKeywords(recipes, exclude) {
   if (!exclude || exclude.length === 0) return recipes;
   const patterns = exclude.map(k => k.toLowerCase());
-  return recipes.filter(r => {
-    const haystack = [
-      (r.title_name || '').toLowerCase(),
-      ...(r.ingredients || []).map(i => i.toLowerCase())
-    ].join(' | ');
-    return !patterns.some(p => haystack.includes(p));
+  return recipes.filter(r => !patterns.some(p => recipeHaystack(r).includes(p)));
+}
+
+// Keep recipes that contain AT LEAST ONE of the keywords in title/ingredients.
+// Falls back to the full pool when nothing matches strongly enough.
+function filterAnyMatch(recipes, keywords, minimumDesired) {
+  if (!keywords || keywords.length === 0) return recipes;
+  const norms = keywords.map(k => k.toLowerCase()).filter(Boolean);
+  if (norms.length === 0) return recipes;
+  const matched = recipes.filter(r => {
+    const hay = recipeHaystack(r);
+    return norms.some(k => hay.includes(k));
   });
+  if (matched.length >= minimumDesired) return matched;
+  // Not enough strict matches — broaden gracefully but still prefer matched first.
+  const matchedSet = new Set(matched.map(r => r.objectID));
+  const others = recipes.filter(r => !matchedSet.has(r.objectID));
+  return [...matched, ...others];
 }
 
 // ===== Speech recognition =====
@@ -349,6 +382,7 @@ async function swapRecipe(index) {
     // as the recipe currently in this slot.
     let candidates;
     if (item.source === 'specific') {
+      const tokens = (item.keyword || '').split(/\s+/).filter(Boolean);
       const hits = await searchRecipes({
         season: ctx.season,
         audience: ctx.audience,
@@ -356,6 +390,7 @@ async function swapRecipe(index) {
         diet: ctx.diet,
         excludeDiet: ctx.excludeDiet,
         query: item.keyword,
+        optionalWords: tokens.length > 1 ? tokens : [],
         hitsPerPage: 50
       });
       candidates = applyExcludeKeywords(hits, ctx.excludeKeywords);
@@ -367,9 +402,13 @@ async function swapRecipe(index) {
         diet: ctx.diet,
         excludeDiet: ctx.excludeDiet,
         query: (ctx.includeKeywords || []).join(' '),
+        optionalWords: ctx.includeKeywords || [],
         hitsPerPage: 500
       });
-      const filtered = applyExcludeKeywords(hits, ctx.excludeKeywords);
+      let filtered = applyExcludeKeywords(hits, ctx.excludeKeywords);
+      if ((ctx.includeKeywords || []).length > 0) {
+        filtered = filterAnyMatch(filtered, ctx.includeKeywords, 8);
+      }
       candidates = filtered.filter(r => proteinCategory(r) === item.protein);
       // Fallback: if no recipe of same protein, allow any protein
       if (candidates.length === 0) candidates = filtered;
@@ -508,6 +547,7 @@ async function generate() {
 
     // Step 1: fulfill specific requests (e.g. "1 quiche")
     for (const s of specifics) {
+      const tokens = (s.keyword || '').split(/\s+/).filter(Boolean);
       const hits = await searchRecipes({
         season,
         audience,
@@ -515,6 +555,7 @@ async function generate() {
         diet,
         excludeDiet,
         query: s.keyword,
+        optionalWords: tokens.length > 1 ? tokens : [],
         hitsPerPage: 50
       });
       const filtered = applyExcludeKeywords(hits, excludeKeywords)
@@ -545,14 +586,15 @@ async function generate() {
         diet,
         excludeDiet,
         query: includeKeywords.join(' '),
+        optionalWords: includeKeywords,
         hitsPerPage: 500
       });
 
       pool = applyExcludeKeywords(pool, excludeKeywords)
         .filter(r => !usedIds.has(r.objectID));
 
-      if (includeKeywords.length > 0 && pool.length > remaining * 4) {
-        pool = pool.slice(0, Math.max(remaining * 4, 30));
+      if (includeKeywords.length > 0) {
+        pool = filterAnyMatch(pool, includeKeywords, remaining);
       }
 
       if (pool.length < remaining) {
