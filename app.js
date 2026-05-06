@@ -23,6 +23,12 @@ function audienceFilters(audience, ageBucket) {
   return ['age:"pour la famille"'];
 }
 
+// Cache identical Algolia queries within a session so successive swaps and
+// refinements don't re-fetch the same pool. Algolia returns the same hits for
+// identical params, and our shuffling/filtering happens on top.
+const searchCache = new Map();
+const inflightSearches = new Map();
+
 async function searchRecipes({ season, audience = 'family', ageBucket = null, diet = [], excludeDiet = [], query = '', optionalWords = [], hitsPerPage = 500 }) {
   const filterParts = [
     ...audienceFilters(audience, ageBucket),
@@ -33,7 +39,6 @@ async function searchRecipes({ season, audience = 'family', ageBucket = null, di
   ];
   const filters = filterParts.join(' AND ');
 
-  const url = `https://${ALGOLIA_APP_ID}-dsn.algolia.net/1/indexes/${ALGOLIA_INDEX}/query`;
   const params = [
     `hitsPerPage=${hitsPerPage}`,
     `filters=${encodeURIComponent(filters)}`,
@@ -42,19 +47,40 @@ async function searchRecipes({ season, audience = 'family', ageBucket = null, di
   if (optionalWords.length) {
     params.push(`optionalWords=${encodeURIComponent(JSON.stringify(optionalWords))}`);
   }
-  const body = { params: params.join('&') };
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'X-Algolia-API-Key': ALGOLIA_API_KEY,
-      'X-Algolia-Application-Id': ALGOLIA_APP_ID,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify(body)
-  });
-  if (!res.ok) throw new Error(`Algolia error: ${res.status}`);
-  const data = await res.json();
-  return data.hits || [];
+  const paramsString = params.join('&');
+
+  // Cache hit — return the previous hits (callers don't mutate the array).
+  if (searchCache.has(paramsString)) {
+    return searchCache.get(paramsString);
+  }
+  // De-duplicate concurrent requests for the same params.
+  if (inflightSearches.has(paramsString)) {
+    return inflightSearches.get(paramsString);
+  }
+
+  const url = `https://${ALGOLIA_APP_ID}-dsn.algolia.net/1/indexes/${ALGOLIA_INDEX}/query`;
+  const promise = (async () => {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'X-Algolia-API-Key': ALGOLIA_API_KEY,
+        'X-Algolia-Application-Id': ALGOLIA_APP_ID,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ params: paramsString })
+    });
+    if (!res.ok) throw new Error(`Algolia error: ${res.status}`);
+    const data = await res.json();
+    const hits = data.hits || [];
+    searchCache.set(paramsString, hits);
+    return hits;
+  })();
+  inflightSearches.set(paramsString, promise);
+  try {
+    return await promise;
+  } finally {
+    inflightSearches.delete(paramsString);
+  }
 }
 
 function proteinCategory(recipe) {
