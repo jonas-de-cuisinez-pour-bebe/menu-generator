@@ -517,13 +517,13 @@ main {
 
 .recipe-card img {
   width: 100%;
-  aspect-ratio: 16/10;
+  aspect-ratio: 3/4;
   object-fit: cover;
   background: var(--cpb-cream);
 }
 
 .no-img {
-  aspect-ratio: 16/10;
+  aspect-ratio: 3/4;
   display: flex;
   align-items: center;
   justify-content: center;
