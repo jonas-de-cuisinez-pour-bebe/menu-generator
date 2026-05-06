@@ -2,6 +2,7 @@ const ALGOLIA_APP_ID = '6X0Y0UTRKB';
 const ALGOLIA_API_KEY = 'cb085d1f940a1df7dc1b45f682311c5b';
 const ALGOLIA_INDEX = 'wp_recettes';
 const ANTHROPIC_MODEL = 'claude-haiku-4-5-20251001';
+const ANTHROPIC_PROXY_URL = 'https://app-b9d9b3e4-02af-4c9a-8dcc-e8798eb83626.cleverapps.io/api/anthropic/messages';
 
 function getCurrentSeason(date = new Date()) {
   const md = (date.getMonth() + 1) * 100 + date.getDate();
@@ -180,15 +181,13 @@ function sanitizeFilters(f) {
   };
 }
 
-async function parsePrecisions(text, apiKey) {
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
+async function parsePrecisions(text) {
+  // Calls the server-side proxy at /api/anthropic/messages.
+  // The server injects the API key from its ANTHROPIC_API_KEY env var,
+  // so the key never lives in the browser.
+  const res = await fetch(ANTHROPIC_PROXY_URL, {
     method: 'POST',
-    headers: {
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-      'anthropic-dangerous-direct-browser-access': 'true',
-      'content-type': 'application/json'
-    },
+    headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
       model: ANTHROPIC_MODEL,
       max_tokens: 400,
@@ -280,8 +279,9 @@ function initSpeech() {
 // ===== Main flow =====
 
 const appState = {
-  items: [],   // { recipe, protein, source: 'specific'|'variety', keyword? }
-  context: {}  // { season, diet, excludeDiet, excludeKeywords, includeKeywords }
+  items: [],            // { recipe, protein, source: 'specific'|'variety', keyword? }
+  context: {},          // { season, diet, excludeDiet, excludeKeywords, includeKeywords }
+  skippedIds: new Set() // recipes the user already swapped away from this session
 };
 
 function pickImage(recipe, audience) {
@@ -345,7 +345,9 @@ async function swapRecipe(index) {
   const usedIds = new Set(appState.items.map(i => i.recipe.objectID));
 
   try {
-    let pool;
+    // Build the candidate pool of recipes that match the same constraints
+    // as the recipe currently in this slot.
+    let candidates;
     if (item.source === 'specific') {
       const hits = await searchRecipes({
         season: ctx.season,
@@ -356,9 +358,7 @@ async function swapRecipe(index) {
         query: item.keyword,
         hitsPerPage: 50
       });
-      pool = applyExcludeKeywords(hits, ctx.excludeKeywords)
-        .filter(r => !usedIds.has(r.objectID))
-        .slice(0, 10);
+      candidates = applyExcludeKeywords(hits, ctx.excludeKeywords);
     } else {
       const hits = await searchRecipes({
         season: ctx.season,
@@ -369,14 +369,20 @@ async function swapRecipe(index) {
         query: (ctx.includeKeywords || []).join(' '),
         hitsPerPage: 500
       });
-      pool = applyExcludeKeywords(hits, ctx.excludeKeywords)
-        .filter(r => !usedIds.has(r.objectID))
-        .filter(r => proteinCategory(r) === item.protein);
+      const filtered = applyExcludeKeywords(hits, ctx.excludeKeywords);
+      candidates = filtered.filter(r => proteinCategory(r) === item.protein);
       // Fallback: if no recipe of same protein, allow any protein
-      if (pool.length === 0) {
-        pool = applyExcludeKeywords(hits, ctx.excludeKeywords)
-          .filter(r => !usedIds.has(r.objectID));
-      }
+      if (candidates.length === 0) candidates = filtered;
+    }
+
+    // Step 1: try only recipes never displayed AND never skipped this session.
+    let pool = candidates.filter(r => !usedIds.has(r.objectID) && !appState.skippedIds.has(r.objectID));
+
+    // Step 2: if exhausted, the user has cycled through the whole catalogue
+    // for this slot — reset the skipped memory so we can re-suggest them.
+    if (pool.length === 0) {
+      appState.skippedIds.clear();
+      pool = candidates.filter(r => !usedIds.has(r.objectID));
     }
 
     if (pool.length === 0) {
@@ -389,6 +395,10 @@ async function swapRecipe(index) {
     }
 
     const next = shuffle(pool)[0];
+    // Remember the recipe we're skipping away from so we don't re-suggest it
+    // until the candidate pool is exhausted.
+    appState.skippedIds.add(item.recipe.objectID);
+
     appState.items[index] = {
       ...item,
       recipe: next,
@@ -438,7 +448,6 @@ async function generate() {
   let persons = +document.getElementById('persons').value;
   const baseDiet = [...document.querySelectorAll('input[name=diet]:checked')].map(i => i.value);
   const precisions = document.getElementById('precisions').value.trim();
-  const apiKey = document.getElementById('api-key').value.trim();
   const audience = document.querySelector('input[name=audience]:checked').value;
 
   const season = getCurrentSeason();
@@ -471,14 +480,9 @@ async function generate() {
     let llmFilters = null;
 
     if (precisions) {
-      if (!apiKey) {
-        results.innerHTML = `<div class="error">Pour utiliser des précisions en langage naturel, ajoutez votre clé API Anthropic dans le panneau "🔑 Clé API" du formulaire.</div>`;
-        return;
-      }
       results.innerHTML = `<p class="loading">🧠 Analyse de vos précisions...</p>`;
       try {
-        llmFilters = await parsePrecisions(precisions, apiKey);
-        localStorage.setItem('anthropic_api_key', apiKey);
+        llmFilters = await parsePrecisions(precisions);
       } catch (err) {
         results.innerHTML = `<div class="error">Impossible d'analyser les précisions : ${err.message}</div>`;
         return;
@@ -582,6 +586,8 @@ async function generate() {
 
     appState.items = shuffled;
     appState.context = { season, audience, ageBucket, diet, excludeDiet, excludeKeywords, includeKeywords };
+    // Fresh menu = fresh skip memory.
+    appState.skippedIds = new Set();
 
     renderMenu(shuffled, persons, season, llmFilters);
   } catch (err) {
@@ -622,9 +628,6 @@ function updateBabyAgeInfo() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-  const stored = localStorage.getItem('anthropic_api_key');
-  if (stored) document.getElementById('api-key').value = stored;
-
   const birthdate = localStorage.getItem('baby_birthdate');
   if (birthdate) document.getElementById('baby-birthdate').value = birthdate;
 
