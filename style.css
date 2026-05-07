@@ -615,8 +615,8 @@ main {
 }
 
 .tag-viande {
-  background: var(--cpb-betterave-tint);
-  color: var(--cpb-betterave);
+  background: #F0E0D2;
+  color: #7C2D12;
 }
 
 .tag-poisson {
