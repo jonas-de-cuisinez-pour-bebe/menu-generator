@@ -171,13 +171,14 @@ Diètes disponibles (n'utilise QUE ces valeurs exactes) : "Végétarien", "Vegan
 
 Réponds UNIQUEMENT avec un objet JSON valide, sans markdown, selon ce schéma :
 {
-  "specific": [],      // plats précis avec un nombre exact, ex: [{"keyword":"quiche","count":1}]
-  "diet": [],          // diètes à appliquer (ET logique)
-  "exclude_diet": [],  // diètes à exclure
-  "include": [],       // préférences douces pour le RESTE du menu (mots-clés singulier)
-  "exclude": [],       // mots-clés à exclure complètement (singulier)
-  "meals": null,       // nombre TOTAL de repas si mentionné
-  "persons": null      // nombre de personnes si mentionné
+  "specific": [],       // plats précis avec un nombre exact, ex: [{"keyword":"quiche","count":1}]
+  "must_contain": [],   // ingrédients à intégrer AU MOINS X fois dans le menu global, ex: [{"keyword":"poulet","count":1}]. N'augmente PAS le nombre de repas — un même plat peut satisfaire plusieurs contraintes.
+  "diet": [],           // diètes à appliquer (ET logique)
+  "exclude_diet": [],   // diètes à exclure
+  "include": [],        // préférences douces pour le RESTE du menu (mots-clés singulier)
+  "exclude": [],        // mots-clés à exclure complètement (singulier)
+  "meals": null,        // nombre TOTAL de repas si mentionné
+  "persons": null       // nombre de personnes si mentionné
 }
 
 Règles importantes :
@@ -187,9 +188,14 @@ Règles importantes :
 4. "sans gluten/lactose/PLV/oeuf" -> diet:["Sans gluten"|"Sans PLV"|"Sans oeuf"] (préférence positive).
 5. "végétarien"/"vegan" -> diet:["Végétarien"|"Vegan"].
 6. IGNORE complètement les mots "saison", "saisonnier", "saisonnière", "de saison" : la saison est déjà appliquée automatiquement.
-7. "1 quiche", "2 pâtes" -> specific (compte exact). "on aime les pâtes" -> include (préférence).
+7. "1 quiche", "2 pâtes", "un plat avec du riz", "une lasagne" -> specific (compte exact, AJOUTE au nombre de repas). "on aime les pâtes" -> include (préférence douce).
 8. Si "1 quiche et 4 autres plats" : meals=5. Si juste "1 quiche" sans nombre total : meals=null.
 9. NE renseigne meals QUE si l'utilisateur mentionne EXPLICITEMENT un nombre total ("X repas", "X plats"). N'INFÈRE JAMAIS meals en comptant les items listés. Ex: "lasagnes pizza salade" = meals:null (ne compte PAS 3).
+11. "intègre au moins X fois Y" / "AU MOINS 1 plat avec Y" / "1 fois Y, 1 fois Z" formulé comme contrainte d'inclusion globale -> must_contain:[{keyword:"Y",count:X}]. C'est une garantie qu'au moins X plats du menu contiendront Y, mais SANS ajouter de plats supplémentaires. UN MÊME PLAT PEUT SATISFAIRE PLUSIEURS CONTRAINTES (specific ET must_contain) : ex: "1 plat avec riz" + "au moins 1 fois poulet" = riz au poulet (un seul plat couvre les deux).
+12. Distinction cruciale :
+   - "un plat avec X" / "1 X" (qui exprime un type de plat ou un féculent structurant) -> specific
+   - "au moins 1 fois X" / "intègre X" (qui ajoute un INGRÉDIENT à n'importe lequel des plats existants) -> must_contain
+   Si tu doutes : un féculent / un format de plat (riz, pâtes, quiche, pommes de terre) = specific ; un type de protéine ou un ingrédient secondaire (poulet, dinde, viande hachée, crevettes) à intégrer = must_contain.
 10. La recherche s'effectue sur les titres et ingrédients de recettes françaises bébé/famille. Si l'utilisateur mentionne une CATÉGORIE générique (mijoté, gratin, soupe, sauté, rôti, salade, tarte, crumble, curry, wok...), expanse-la en plusieurs noms concrets de plats que l'on peut trouver dans des titres. Exemples :
    - "mijoté" / "plats mijotés" -> ["bourguignon","blanquette","tajine","ragoût","bœuf carottes","mafé","colombo","pot-au-feu","navarin"]
    - "soupe" -> ["soupe","velouté","minestrone","bouillon"]
@@ -206,19 +212,22 @@ Exemples :
 "je veux 1 quiche et 4 autres plats" -> {"specific":[{"keyword":"quiche","count":1}],"diet":[],"exclude_diet":[],"include":[],"exclude":[],"meals":5,"persons":null}
 "2 plats avec du poulet et 3 plats variés sans poisson" -> {"specific":[{"keyword":"poulet","count":2}],"diet":[],"exclude_diet":["Avec poisson"],"include":[],"exclude":[],"meals":5,"persons":null}
 "7 repas pour 5 personnes, végétarien" -> {"specific":[],"diet":["Végétarien"],"exclude_diet":[],"include":[],"exclude":[],"meals":7,"persons":5}
-"des plats mijotés" -> {"specific":[],"diet":[],"exclude_diet":[],"include":["bourguignon","blanquette","tajine","ragoût","bœuf carottes","mafé","colombo","pot-au-feu","navarin"],"exclude":[],"meals":null,"persons":null}
-"1 soupe et 4 autres plats" -> {"specific":[{"keyword":"soupe velouté minestrone bouillon","count":1}],"diet":[],"exclude_diet":[],"include":[],"exclude":[],"meals":5,"persons":null}`;
+"des plats mijotés" -> {"specific":[],"must_contain":[],"diet":[],"exclude_diet":[],"include":["bourguignon","blanquette","tajine","ragoût","bœuf carottes","mafé","colombo","pot-au-feu","navarin"],"exclude":[],"meals":null,"persons":null}
+"1 soupe et 4 autres plats" -> {"specific":[{"keyword":"soupe velouté minestrone bouillon","count":1}],"must_contain":[],"diet":[],"exclude_diet":[],"include":[],"exclude":[],"meals":5,"persons":null}
+"sans poisson, sans aubergine, un plat avec du riz, un plat avec des pâtes, un plat avec des pommes de terre, une quiche, intègre au moins 1 fois du poulet, 1 fois de la dinde, 1 fois de la viande hachée" -> {"specific":[{"keyword":"riz","count":1},{"keyword":"pâte","count":1},{"keyword":"pomme de terre","count":1},{"keyword":"quiche","count":1}],"must_contain":[{"keyword":"poulet","count":1},{"keyword":"dinde","count":1},{"keyword":"viande hachée","count":1}],"diet":[],"exclude_diet":["Avec poisson"],"include":[],"exclude":["aubergine"],"meals":null,"persons":null}`;
 
 const SEASON_WORDS = /^(saison|saisonni[eè]re?|de saison|saisonnier)$/i;
 
 function sanitizeFilters(f) {
   if (!f) return f;
   const cleanList = (arr) => (arr || []).filter(k => !SEASON_WORDS.test((k || '').trim()));
+  const cleanCountedList = (arr) => (arr || []).filter(s => !SEASON_WORDS.test((s.keyword || '').trim()));
   return {
     ...f,
     include: cleanList(f.include),
     exclude: cleanList(f.exclude),
-    specific: (f.specific || []).filter(s => !SEASON_WORDS.test((s.keyword || '').trim()))
+    specific: cleanCountedList(f.specific),
+    must_contain: cleanCountedList(f.must_contain)
   };
 }
 
@@ -253,6 +262,35 @@ function recipeHaystack(r) {
     (r.title_name || '').toLowerCase(),
     ...(r.ingredients || []).map(i => i.toLowerCase())
   ].join(' | ');
+}
+
+function recipeContains(recipe, keyword) {
+  if (!keyword) return false;
+  return recipeHaystack(recipe).includes(keyword.toLowerCase());
+}
+
+// How many of the `mustContain` constraints are STILL not satisfied — and
+// how many of those THIS recipe would knock off the list.
+function satisfactionScore(recipe, mustContain, satCounts) {
+  let score = 0;
+  for (const mc of mustContain) {
+    const need = mc.count || 1;
+    const have = satCounts[mc.keyword] || 0;
+    if (have < need && recipeContains(recipe, mc.keyword)) score++;
+  }
+  return score;
+}
+
+function updateSatisfaction(recipe, mustContain, satCounts) {
+  for (const mc of mustContain) {
+    if (recipeContains(recipe, mc.keyword)) {
+      satCounts[mc.keyword] = (satCounts[mc.keyword] || 0) + 1;
+    }
+  }
+}
+
+function unmetMustContain(mustContain, satCounts) {
+  return mustContain.filter(mc => (satCounts[mc.keyword] || 0) < (mc.count || 1));
 }
 
 function applyExcludeKeywords(recipes, exclude) {
@@ -567,13 +605,19 @@ async function generate() {
     const includeKeywords = (llmFilters && llmFilters.include) || [];
     const excludeKeywords = (llmFilters && llmFilters.exclude) || [];
     const specifics = (llmFilters && llmFilters.specific) || [];
+    const mustContain = (llmFilters && llmFilters.must_contain) || [];
+    const mustContainKeywords = mustContain.map(mc => mc.keyword).filter(Boolean);
 
     const usedIds = new Set();
+    const satCounts = {}; // tracking must_contain satisfaction across all picks
     const specificPicks = []; // { recipe, keyword }
 
-    // Step 1: fulfill specific requests (e.g. "1 quiche")
+    // Step 1: fulfill specific requests (e.g. "1 quiche"). For each specific,
+    // pick the candidate that also covers the MOST unsatisfied must_contain
+    // constraints so a single dish can serve multiple wishes.
     for (const s of specifics) {
       const tokens = (s.keyword || '').split(/\s+/).filter(Boolean);
+      const optWords = [...new Set([...(tokens.length > 1 ? tokens : []), ...mustContainKeywords])];
       const hits = await searchRecipes({
         season,
         audience,
@@ -581,15 +625,20 @@ async function generate() {
         diet,
         excludeDiet,
         query: s.keyword,
-        optionalWords: tokens.length > 1 ? tokens : [],
+        optionalWords: optWords,
         hitsPerPage: 50
       });
-      const filtered = applyExcludeKeywords(hits, excludeKeywords)
+      let filtered = applyExcludeKeywords(hits, excludeKeywords)
         .filter(r => !usedIds.has(r.objectID));
-      // Keep top-K most relevant (Algolia order) before shuffling, to avoid
-      // typo-tolerance matches like "tartine" when user asked for "tarte".
-      const topK = Math.max(s.count * 5, 10);
-      const picks = shuffle(filtered.slice(0, topK)).slice(0, s.count);
+      // Keep recipes that strictly match the specific keyword in title/ingredients.
+      const strict = filtered.filter(r => recipeContains(r, s.keyword));
+      if (strict.length >= s.count) filtered = strict;
+
+      // Sort by must_contain satisfaction (desc), keep some randomness within ties
+      const scored = filtered.map(r => ({ r, score: satisfactionScore(r, mustContain, satCounts), rand: Math.random() }));
+      scored.sort((a, b) => b.score - a.score || a.rand - b.rand);
+
+      const picks = scored.slice(0, s.count).map(x => x.r);
       if (picks.length < s.count) {
         results.innerHTML = `<div class="error">Pas assez de recettes "${s.keyword}" trouvées (${picks.length}/${s.count}). Assouplissez les autres contraintes.</div>`;
         return;
@@ -597,22 +646,26 @@ async function generate() {
       for (const r of picks) {
         specificPicks.push({ recipe: r, keyword: s.keyword });
         usedIds.add(r.objectID);
+        updateSatisfaction(r, mustContain, satCounts);
       }
     }
 
     const remaining = meals - specificPicks.length;
     let varietyPicks = [];
 
-    // Step 2: fill the rest with the balanced/variety pool
+    // Step 2: fill the rest. Two passes — first pick recipes that resolve any
+    // still-unmet must_contain, then balanced variety for the leftover slots.
     if (remaining > 0) {
+      const unmet = unmetMustContain(mustContain, satCounts);
+      const unmetKeywords = unmet.map(mc => mc.keyword);
       let pool = await searchRecipes({
         season,
         audience,
         ageBucket,
         diet,
         excludeDiet,
-        query: includeKeywords.join(' '),
-        optionalWords: includeKeywords,
+        query: [...includeKeywords, ...unmetKeywords].join(' '),
+        optionalWords: [...includeKeywords, ...unmetKeywords],
         hitsPerPage: 500
       });
 
@@ -628,7 +681,32 @@ async function generate() {
         return;
       }
 
-      varietyPicks = pickBalanced(pool, remaining);
+      // 2a. Force-pick recipes that satisfy unmet must_contain constraints.
+      const forced = [];
+      for (const mc of unmet) {
+        if ((satCounts[mc.keyword] || 0) >= (mc.count || 1)) continue;
+        const candidates = pool
+          .filter(r => !usedIds.has(r.objectID) && recipeContains(r, mc.keyword))
+          .map(r => ({ r, score: satisfactionScore(r, mustContain, satCounts), rand: Math.random() }))
+          .sort((a, b) => b.score - a.score || a.rand - b.rand);
+        const need = (mc.count || 1) - (satCounts[mc.keyword] || 0);
+        for (let i = 0; i < need && i < candidates.length && forced.length < remaining; i++) {
+          const r = candidates[i].r;
+          forced.push(r);
+          usedIds.add(r.objectID);
+          updateSatisfaction(r, mustContain, satCounts);
+        }
+        if (forced.length >= remaining) break;
+      }
+
+      // 2b. Fill leftover slots with balanced selection from the rest.
+      const leftover = remaining - forced.length;
+      let balanced = [];
+      if (leftover > 0) {
+        const rest = pool.filter(r => !usedIds.has(r.objectID));
+        balanced = pickBalanced(rest, leftover);
+      }
+      varietyPicks = [...forced, ...balanced];
     }
 
     const items = [
@@ -695,6 +773,81 @@ function updateBabyAgeInfo() {
   }
 }
 
+// ===== Saved precision presets =====
+
+const PRESETS_KEY = 'menu_gen_precisions_presets_v1';
+
+function loadPresets() {
+  try {
+    const raw = localStorage.getItem(PRESETS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch { return []; }
+}
+
+function savePresets(presets) {
+  localStorage.setItem(PRESETS_KEY, JSON.stringify(presets));
+}
+
+function renderPresets() {
+  const container = document.getElementById('preset-chips');
+  if (!container) return;
+  const presets = loadPresets();
+  container.innerHTML = presets.map((p, i) => `
+    <span class="preset-chip" data-index="${i}" title="${escapeAttr(p.text)}">
+      <span class="preset-chip-name">${escapeHtml(p.name)}</span>
+      <button type="button" class="preset-del" data-index="${i}" title="Supprimer ce préréglage" aria-label="Supprimer">✕</button>
+    </span>
+  `).join('');
+}
+
+function escapeHtml(s) {
+  return String(s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function escapeAttr(s) { return escapeHtml(s); }
+
+function onPresetSave() {
+  const textarea = document.getElementById('precisions');
+  const text = textarea.value.trim();
+  if (!text) {
+    alert('Écris d\'abord tes précisions dans la zone de texte.');
+    return;
+  }
+  const name = prompt('Nom du préréglage :', text.slice(0, 30));
+  if (!name) return;
+  const presets = loadPresets();
+  // Replace if same name exists
+  const existing = presets.findIndex(p => p.name === name);
+  const entry = { name: name.trim(), text };
+  if (existing >= 0) presets[existing] = entry;
+  else presets.push(entry);
+  savePresets(presets);
+  renderPresets();
+}
+
+function onPresetClick(e) {
+  const del = e.target.closest('.preset-del');
+  if (del) {
+    e.stopPropagation();
+    const idx = +del.dataset.index;
+    const presets = loadPresets();
+    if (confirm(`Supprimer le préréglage "${presets[idx]?.name}" ?`)) {
+      presets.splice(idx, 1);
+      savePresets(presets);
+      renderPresets();
+    }
+    return;
+  }
+  const chip = e.target.closest('.preset-chip');
+  if (!chip) return;
+  const idx = +chip.dataset.index;
+  const presets = loadPresets();
+  const p = presets[idx];
+  if (!p) return;
+  document.getElementById('precisions').value = p.text;
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   const birthdate = localStorage.getItem('baby_birthdate');
   if (birthdate) document.getElementById('baby-birthdate').value = birthdate;
@@ -704,6 +857,10 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   document.getElementById('baby-birthdate').addEventListener('change', updateBabyAgeInfo);
   updateBabyBlock();
+
+  document.getElementById('preset-save-btn').addEventListener('click', onPresetSave);
+  document.getElementById('preset-chips').addEventListener('click', onPresetClick);
+  renderPresets();
 
   initSpeech();
 });

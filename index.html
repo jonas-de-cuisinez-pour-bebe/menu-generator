@@ -60,6 +60,10 @@
         <button type="button" id="mic-btn" title="Parler" aria-label="Activer le micro">🎤</button>
       </div>
       <div id="speech-status" class="speech-status"></div>
+      <div class="presets-row">
+        <button type="button" id="preset-save-btn" class="preset-save" title="Enregistrer le texte courant comme préréglage">💾 Enregistrer</button>
+        <div id="preset-chips" class="preset-chips"></div>
+      </div>
     </div>
 
     <details>
@@ -70,14 +74,6 @@
         <label class="check"><input type="checkbox" name="diet" value="Sans gluten"> Sans gluten</label>
         <label class="check"><input type="checkbox" name="diet" value="Sans PLV"> Sans lactose</label>
         <label class="check"><input type="checkbox" name="diet" value="Sans oeuf"> Sans œuf</label>
-      </div>
-    </details>
-
-    <details>
-      <summary>🔑 Clé API Anthropic (pour les précisions)</summary>
-      <div class="api-block">
-        <p class="hint-small">Nécessaire pour comprendre vos précisions en langage naturel. Stockée uniquement dans votre navigateur. <a href="https://console.anthropic.com/settings/keys" target="_blank">Créer une clé</a></p>
-        <input type="password" id="api-key" placeholder="sk-ant-..." autocomplete="off">
       </div>
     </details>
 

@@ -321,6 +321,84 @@ input[type=checkbox] {
 
 .speech-status.error { color: var(--cpb-betterave); }
 
+.presets-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: .4rem;
+  margin-top: .5rem;
+}
+
+.preset-save {
+  width: auto;
+  margin: 0;
+  padding: .35rem .7rem;
+  font-family: var(--font-body);
+  font-size: .78rem;
+  font-weight: 600;
+  background: var(--cpb-cream);
+  color: var(--cpb-green-deep);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  cursor: pointer;
+  text-transform: none;
+  letter-spacing: 0;
+  transition: background .15s, border-color .15s;
+}
+
+.preset-save:hover:not(:disabled) {
+  background: var(--cpb-green-tint);
+  border-color: var(--cpb-green);
+  transform: none;
+  box-shadow: none;
+}
+
+.preset-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .35rem;
+}
+
+.preset-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: .3rem;
+  padding: .3rem .55rem .3rem .75rem;
+  background: white;
+  color: var(--cpb-ink);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: .78rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background .15s, border-color .15s;
+}
+
+.preset-chip:hover {
+  background: var(--cpb-green-tint);
+  border-color: var(--cpb-green);
+}
+
+.preset-chip .preset-del {
+  background: none;
+  border: 0;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0 .15rem;
+  font-size: .9rem;
+  line-height: 1;
+  width: auto;
+  margin: 0;
+  border-radius: 50%;
+}
+
+.preset-chip .preset-del:hover {
+  color: var(--cpb-betterave);
+  background: none;
+  transform: none;
+  box-shadow: none;
+}
+
 /* DIET / API DETAILS */
 details {
   margin-top: .8rem;
