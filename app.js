@@ -320,11 +320,12 @@ function filterAnyMatch(recipes, keywords, minimumDesired) {
 
 let recognition = null;
 
-function initSpeech() {
+function attachMic({ micId, textareaId, statusId, onInputAfter }) {
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  const micBtn = document.getElementById('mic-btn');
-  const status = document.getElementById('speech-status');
-  const textarea = document.getElementById('precisions');
+  const micBtn = document.getElementById(micId);
+  const status = document.getElementById(statusId);
+  const textarea = document.getElementById(textareaId);
+  if (!micBtn || !textarea) return;
 
   if (!SR) {
     micBtn.disabled = true;
@@ -345,8 +346,10 @@ function initSpeech() {
 
     let finalText = '';
     micBtn.classList.add('recording');
-    status.classList.remove('error');
-    status.textContent = '🎙️ J\'écoute...';
+    if (status) {
+      status.classList.remove('error');
+      status.textContent = '🎙️ J\'écoute...';
+    }
 
     recognition.onresult = (event) => {
       let interim = '';
@@ -356,21 +359,31 @@ function initSpeech() {
         else interim += t;
       }
       textarea.value = (finalText + interim).trim();
+      if (typeof onInputAfter === 'function') onInputAfter(textarea);
     };
 
     recognition.onerror = (e) => {
-      status.classList.add('error');
-      status.textContent = `Erreur micro : ${e.error}`;
+      if (status) {
+        status.classList.add('error');
+        status.textContent = `Erreur micro : ${e.error}`;
+      }
     };
 
     recognition.onend = () => {
       micBtn.classList.remove('recording');
-      if (!status.classList.contains('error')) status.textContent = '';
+      if (status && !status.classList.contains('error')) status.textContent = '';
       recognition = null;
+      // Fire an input event so debounced auto-save catches the dictated text.
+      textarea.dispatchEvent(new Event('input', { bubbles: true }));
     };
 
     recognition.start();
   });
+}
+
+function initSpeech() {
+  attachMic({ micId: 'mic-btn', textareaId: 'precisions', statusId: 'speech-status' });
+  attachMic({ micId: 'general-prefs-mic-btn', textareaId: 'general-prefs', statusId: 'general-prefs-status' });
 }
 
 // ===== Main flow =====
@@ -776,80 +789,7 @@ function updateBabyAgeInfo() {
   }
 }
 
-// ===== Saved precision presets =====
-
-const PRESETS_KEY = 'menu_gen_precisions_presets_v1';
-
-function loadPresets() {
-  try {
-    const raw = localStorage.getItem(PRESETS_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch { return []; }
-}
-
-function savePresets(presets) {
-  localStorage.setItem(PRESETS_KEY, JSON.stringify(presets));
-}
-
-function renderPresets() {
-  const container = document.getElementById('preset-chips');
-  if (!container) return;
-  const presets = loadPresets();
-  container.innerHTML = presets.map((p, i) => `
-    <span class="preset-chip" data-index="${i}" title="${escapeAttr(p.text)}">
-      <span class="preset-chip-name">${escapeHtml(p.name)}</span>
-      <button type="button" class="preset-del" data-index="${i}" title="Supprimer ce préréglage" aria-label="Supprimer">✕</button>
-    </span>
-  `).join('');
-}
-
-function escapeHtml(s) {
-  return String(s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-}
-function escapeAttr(s) { return escapeHtml(s); }
-
-function onPresetSave() {
-  const textarea = document.getElementById('precisions');
-  const text = textarea.value.trim();
-  if (!text) {
-    alert('Écris d\'abord tes précisions dans la zone de texte.');
-    return;
-  }
-  const name = prompt('Nom du préréglage :', text.slice(0, 30));
-  if (!name) return;
-  const presets = loadPresets();
-  // Replace if same name exists
-  const existing = presets.findIndex(p => p.name === name);
-  const entry = { name: name.trim(), text };
-  if (existing >= 0) presets[existing] = entry;
-  else presets.push(entry);
-  savePresets(presets);
-  renderPresets();
-}
-
-function onPresetClick(e) {
-  const del = e.target.closest('.preset-del');
-  if (del) {
-    e.stopPropagation();
-    const idx = +del.dataset.index;
-    const presets = loadPresets();
-    if (confirm(`Supprimer le préréglage "${presets[idx]?.name}" ?`)) {
-      presets.splice(idx, 1);
-      savePresets(presets);
-      renderPresets();
-    }
-    return;
-  }
-  const chip = e.target.closest('.preset-chip');
-  if (!chip) return;
-  const idx = +chip.dataset.index;
-  const presets = loadPresets();
-  const p = presets[idx];
-  if (!p) return;
-  document.getElementById('precisions').value = p.text;
-}
+// ===== Persistent general preferences =====
 
 const GENERAL_PREFS_KEY = 'menu_gen_general_prefs_v1';
 
@@ -882,10 +822,6 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   document.getElementById('baby-birthdate').addEventListener('change', updateBabyAgeInfo);
   updateBabyBlock();
-
-  document.getElementById('preset-save-btn').addEventListener('click', onPresetSave);
-  document.getElementById('preset-chips').addEventListener('click', onPresetClick);
-  renderPresets();
 
   setupGeneralPrefs();
   initSpeech();

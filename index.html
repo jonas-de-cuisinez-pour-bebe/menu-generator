@@ -52,28 +52,25 @@
 
     <div class="precisions-block">
       <label class="precisions-label">
-        Préférences générales (optionnel)
-        <span class="precisions-hint">Ce qui change peu — allergies, régime, dégoûts persistants. Sauvegardé automatiquement.</span>
-      </label>
-      <textarea id="general-prefs" rows="2" placeholder="Ex : sans fruits de mer, on est végétariens, mon mari déteste les champignons..."></textarea>
-      <div id="general-prefs-status" class="speech-status"></div>
-    </div>
-
-    <div class="precisions-block">
-      <label class="precisions-label">
-        Précisions du jour (optionnel)
+        Précisions de la semaine (optionnel)
         <span class="precisions-hint">Ce que tu veux pour CETTE semaine. Ex : « 1 quiche, 1 plat avec du riz, au moins 1 fois poulet »</span>
       </label>
       <div class="precisions-input">
         <textarea id="precisions" rows="2" placeholder="Tapez ou cliquez sur le micro pour parler..."></textarea>
-        <button type="button" id="mic-btn" title="Parler" aria-label="Activer le micro">🎤</button>
+        <button type="button" id="mic-btn" class="mic-btn" title="Parler" aria-label="Activer le micro">🎤</button>
       </div>
       <div id="speech-status" class="speech-status"></div>
-      <div class="presets-row">
-        <button type="button" id="preset-save-btn" class="preset-save" title="Enregistrer le texte courant comme préréglage">💾 Enregistrer</button>
-        <div id="preset-chips" class="preset-chips"></div>
-      </div>
     </div>
+
+    <details class="general-prefs-details">
+      <summary>Préférences générales (allergies, régime, dégoûts…)</summary>
+      <p class="hint-small">Sauvegardé automatiquement, appliqué à chaque génération.</p>
+      <div class="precisions-input">
+        <textarea id="general-prefs" rows="2" placeholder="Ex : sans fruits de mer, on est végétariens, mon mari déteste les champignons..."></textarea>
+        <button type="button" id="general-prefs-mic-btn" class="mic-btn" title="Parler" aria-label="Activer le micro">🎤</button>
+      </div>
+      <div id="general-prefs-status" class="speech-status"></div>
+    </details>
 
     <button type="submit" id="submit-btn">✨ Générer mon menu</button>
   </form>

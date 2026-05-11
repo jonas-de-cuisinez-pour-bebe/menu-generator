@@ -283,7 +283,7 @@ input[type=checkbox] {
   box-shadow: 0 0 0 3px var(--cpb-green-tint);
 }
 
-#mic-btn {
+.mic-btn {
   width: 56px;
   margin: 0;
   padding: 0;
@@ -297,14 +297,14 @@ input[type=checkbox] {
   transition: background .15s, transform .15s;
 }
 
-#mic-btn:hover {
+.mic-btn:hover {
   background: var(--cpb-orange);
   color: var(--cpb-white);
   transform: none;
   box-shadow: none;
 }
 
-#mic-btn.recording {
+.mic-btn.recording {
   background: var(--cpb-betterave-tint);
   color: var(--cpb-betterave);
   border-color: var(--cpb-betterave);
