@@ -458,6 +458,15 @@ async function swapRecipe(index) {
     // Build the candidate pool of recipes that match the same constraints
     // as the recipe currently in this slot.
     let candidates;
+    // Constraints to preserve : the specific keyword (if any) PLUS every
+    // must_contain keyword that the current recipe was incidentally covering.
+    const constraints = [];
+    if (item.source === 'specific' && item.keyword) constraints.push(item.keyword);
+    if (item.source === 'must_contain' && item.must_contain_keyword) constraints.push(item.must_contain_keyword);
+    for (const k of (item.covered || [])) {
+      if (!constraints.includes(k)) constraints.push(k);
+    }
+
     if (item.source === 'specific') {
       const tokens = (item.keyword || '').split(/\s+/).filter(Boolean);
       const hits = await searchRecipes({
@@ -471,26 +480,39 @@ async function swapRecipe(index) {
         hitsPerPage: 50
       });
       candidates = applyExcludeKeywords(hits, ctx.excludeKeywords);
-      // Strict keyword match — avoid Algolia typo tolerance giving us
-      // unrelated dishes (e.g. "tartine" when asked for "tarte").
-      const strict = candidates.filter(r => recipeContains(r, item.keyword));
+      // Apply ALL constraints (specific keyword + any incidentally-covered
+      // must_contain) strictly. If a must_contain is no longer satisfiable
+      // by another dish, we'd rather keep the current dish than swap to one
+      // that breaks the constraint.
+      const strict = candidates.filter(r => constraints.every(k => recipeContains(r, k)));
       if (strict.length > 0) candidates = strict;
+      else {
+        // Fall back to just the specific keyword if the combined constraint
+        // is unsatisfiable. Still keep the typo-tolerance guard.
+        const onlySpecific = candidates.filter(r => recipeContains(r, item.keyword));
+        if (onlySpecific.length > 0) candidates = onlySpecific;
+      }
     } else if (item.source === 'must_contain' && item.must_contain_keyword) {
       // This slot was filled to satisfy an "intègre au moins X fois Y"
-      // constraint. The replacement MUST also contain that keyword;
-      // if no other does, we keep the current recipe.
+      // constraint. The replacement MUST also contain that keyword (plus any
+      // other must_contain the current pick was incidentally covering).
       const hits = await searchRecipes({
         season: ctx.season,
         audience: ctx.audience,
         ageBucket: ctx.ageBucket,
         diet: ctx.diet,
         excludeDiet: ctx.excludeDiet,
-        query: item.must_contain_keyword,
-        optionalWords: [],
+        query: constraints.join(' '),
+        optionalWords: constraints.length > 1 ? constraints : [],
         hitsPerPage: 200
       });
-      candidates = applyExcludeKeywords(hits, ctx.excludeKeywords)
-        .filter(r => recipeContains(r, item.must_contain_keyword));
+      candidates = applyExcludeKeywords(hits, ctx.excludeKeywords);
+      const strict = candidates.filter(r => constraints.every(k => recipeContains(r, k)));
+      if (strict.length > 0) candidates = strict;
+      else {
+        // Fall back to the primary forcing keyword only
+        candidates = candidates.filter(r => recipeContains(r, item.must_contain_keyword));
+      }
     } else {
       const hits = await searchRecipes({
         season: ctx.season,
@@ -681,7 +703,11 @@ async function generate() {
         return;
       }
       for (const r of picks) {
-        specificPicks.push({ recipe: r, keyword: s.keyword });
+        // Track ALL must_contain keywords this pick incidentally covers, so a
+        // later swap can preserve those constraints (e.g. "Lasagnes bolo"
+        // picked as the "pâte" specific that also covers "viande hachée").
+        const covered = mustContainKeywords.filter(k => recipeContains(r, k));
+        specificPicks.push({ recipe: r, keyword: s.keyword, covered });
         usedIds.add(r.objectID);
         updateSatisfaction(r, mustContain, satCounts);
       }
@@ -721,7 +747,7 @@ async function generate() {
       // 2a. Force-pick recipes that satisfy unmet must_contain constraints.
       // Remember which keyword each forced pick was meant to cover, so swaps
       // later can preserve that constraint.
-      const forced = []; // { recipe, must_contain_keyword }
+      const forced = []; // { recipe, must_contain_keyword, covered }
       for (const mc of unmet) {
         if ((satCounts[mc.keyword] || 0) >= (mc.count || 1)) continue;
         const candidates = pool
@@ -731,7 +757,8 @@ async function generate() {
         const need = (mc.count || 1) - (satCounts[mc.keyword] || 0);
         for (let i = 0; i < need && i < candidates.length && forced.length < remaining; i++) {
           const r = candidates[i].r;
-          forced.push({ recipe: r, must_contain_keyword: mc.keyword });
+          const covered = mustContainKeywords.filter(k => recipeContains(r, k));
+          forced.push({ recipe: r, must_contain_keyword: mc.keyword, covered });
           usedIds.add(r.objectID);
           updateSatisfaction(r, mustContain, satCounts);
         }
@@ -747,22 +774,28 @@ async function generate() {
       }
       varietyPicks = [
         ...forced,
-        ...balanced.map(r => ({ recipe: r, must_contain_keyword: null }))
+        ...balanced.map(r => ({
+          recipe: r,
+          must_contain_keyword: null,
+          covered: mustContainKeywords.filter(k => recipeContains(r, k))
+        }))
       ];
     }
 
     const items = [
-      ...specificPicks.map(({ recipe, keyword }) => ({
+      ...specificPicks.map(({ recipe, keyword, covered }) => ({
         recipe,
         protein: proteinCategory(recipe),
         source: 'specific',
-        keyword
+        keyword,
+        covered: covered || []
       })),
-      ...varietyPicks.map(({ recipe, must_contain_keyword }) => ({
+      ...varietyPicks.map(({ recipe, must_contain_keyword, covered }) => ({
         recipe,
         protein: proteinCategory(recipe),
         source: must_contain_keyword ? 'must_contain' : 'variety',
-        must_contain_keyword: must_contain_keyword || null
+        must_contain_keyword: must_contain_keyword || null,
+        covered: covered || []
       }))
     ];
 
@@ -774,7 +807,7 @@ async function generate() {
     const shuffled = shuffle(items);
 
     appState.items = shuffled;
-    appState.context = { season, audience, ageBucket, diet, excludeDiet, excludeKeywords, includeKeywords };
+    appState.context = { season, audience, ageBucket, diet, excludeDiet, excludeKeywords, includeKeywords, mustContainKeywords };
     // Fresh menu = fresh skip memory.
     appState.skippedIds = new Set();
 
