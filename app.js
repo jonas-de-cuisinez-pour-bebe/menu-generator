@@ -471,6 +471,26 @@ async function swapRecipe(index) {
         hitsPerPage: 50
       });
       candidates = applyExcludeKeywords(hits, ctx.excludeKeywords);
+      // Strict keyword match — avoid Algolia typo tolerance giving us
+      // unrelated dishes (e.g. "tartine" when asked for "tarte").
+      const strict = candidates.filter(r => recipeContains(r, item.keyword));
+      if (strict.length > 0) candidates = strict;
+    } else if (item.source === 'must_contain' && item.must_contain_keyword) {
+      // This slot was filled to satisfy an "intègre au moins X fois Y"
+      // constraint. The replacement MUST also contain that keyword;
+      // if no other does, we keep the current recipe.
+      const hits = await searchRecipes({
+        season: ctx.season,
+        audience: ctx.audience,
+        ageBucket: ctx.ageBucket,
+        diet: ctx.diet,
+        excludeDiet: ctx.excludeDiet,
+        query: item.must_contain_keyword,
+        optionalWords: [],
+        hitsPerPage: 200
+      });
+      candidates = applyExcludeKeywords(hits, ctx.excludeKeywords)
+        .filter(r => recipeContains(r, item.must_contain_keyword));
     } else {
       const hits = await searchRecipes({
         season: ctx.season,
@@ -502,6 +522,7 @@ async function swapRecipe(index) {
     }
 
     if (pool.length === 0) {
+      // No other recipe satisfies this slot's constraint — keep the current.
       if (card) {
         card.classList.remove('swapping');
         card.classList.add('swap-error');
@@ -698,7 +719,9 @@ async function generate() {
       }
 
       // 2a. Force-pick recipes that satisfy unmet must_contain constraints.
-      const forced = [];
+      // Remember which keyword each forced pick was meant to cover, so swaps
+      // later can preserve that constraint.
+      const forced = []; // { recipe, must_contain_keyword }
       for (const mc of unmet) {
         if ((satCounts[mc.keyword] || 0) >= (mc.count || 1)) continue;
         const candidates = pool
@@ -708,7 +731,7 @@ async function generate() {
         const need = (mc.count || 1) - (satCounts[mc.keyword] || 0);
         for (let i = 0; i < need && i < candidates.length && forced.length < remaining; i++) {
           const r = candidates[i].r;
-          forced.push(r);
+          forced.push({ recipe: r, must_contain_keyword: mc.keyword });
           usedIds.add(r.objectID);
           updateSatisfaction(r, mustContain, satCounts);
         }
@@ -722,7 +745,10 @@ async function generate() {
         const rest = pool.filter(r => !usedIds.has(r.objectID));
         balanced = pickBalanced(rest, leftover);
       }
-      varietyPicks = [...forced, ...balanced];
+      varietyPicks = [
+        ...forced,
+        ...balanced.map(r => ({ recipe: r, must_contain_keyword: null }))
+      ];
     }
 
     const items = [
@@ -732,10 +758,11 @@ async function generate() {
         source: 'specific',
         keyword
       })),
-      ...varietyPicks.map(r => ({
-        recipe: r,
-        protein: proteinCategory(r),
-        source: 'variety'
+      ...varietyPicks.map(({ recipe, must_contain_keyword }) => ({
+        recipe,
+        protein: proteinCategory(recipe),
+        source: must_contain_keyword ? 'must_contain' : 'variety',
+        must_contain_keyword: must_contain_keyword || null
       }))
     ];
 
