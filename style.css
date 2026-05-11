@@ -261,8 +261,10 @@ input[type=checkbox] {
   align-items: stretch;
 }
 
-#precisions {
+#precisions,
+#general-prefs {
   flex: 1;
+  width: 100%;
   font-size: 1rem;
   font-family: var(--font-body);
   padding: .65rem .85rem;
@@ -271,9 +273,11 @@ input[type=checkbox] {
   resize: vertical;
   background: var(--cpb-white);
   color: var(--cpb-ink);
+  box-sizing: border-box;
 }
 
-#precisions:focus {
+#precisions:focus,
+#general-prefs:focus {
   outline: none;
   border-color: var(--cpb-green);
   box-shadow: 0 0 0 3px var(--cpb-green-tint);

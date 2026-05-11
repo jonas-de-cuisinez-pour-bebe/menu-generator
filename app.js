@@ -549,9 +549,12 @@ function getBabyAgeBucket() {
 async function generate() {
   let meals = +document.getElementById('meals').value;
   let persons = +document.getElementById('persons').value;
-  const baseDiet = [...document.querySelectorAll('input[name=diet]:checked')].map(i => i.value);
-  const precisions = document.getElementById('precisions').value.trim();
+  const generalPrefs = (document.getElementById('general-prefs')?.value || '').trim();
+  const dailyPrecisions = document.getElementById('precisions').value.trim();
   const audience = document.querySelector('input[name=audience]:checked').value;
+
+  // Combine durable preferences with today's precisions when sending to the LLM.
+  const precisions = [generalPrefs, dailyPrecisions].filter(Boolean).join('. ').trim();
 
   const season = getCurrentSeason();
   const results = document.getElementById('results');
@@ -600,7 +603,7 @@ async function generate() {
 
     results.innerHTML = `<p class="loading">⏳ On mijote votre menu de ${season.toLowerCase()}...</p>`;
 
-    const diet = [...baseDiet, ...((llmFilters && llmFilters.diet) || [])];
+    const diet = (llmFilters && llmFilters.diet) || [];
     const excludeDiet = (llmFilters && llmFilters.exclude_diet) || [];
     const includeKeywords = (llmFilters && llmFilters.include) || [];
     const excludeKeywords = (llmFilters && llmFilters.exclude) || [];
@@ -848,6 +851,28 @@ function onPresetClick(e) {
   document.getElementById('precisions').value = p.text;
 }
 
+const GENERAL_PREFS_KEY = 'menu_gen_general_prefs_v1';
+
+function setupGeneralPrefs() {
+  const ta = document.getElementById('general-prefs');
+  const status = document.getElementById('general-prefs-status');
+  if (!ta) return;
+  const stored = localStorage.getItem(GENERAL_PREFS_KEY);
+  if (stored) ta.value = stored;
+
+  let saveTimer = null;
+  ta.addEventListener('input', () => {
+    if (saveTimer) clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => {
+      localStorage.setItem(GENERAL_PREFS_KEY, ta.value);
+      if (status) {
+        status.textContent = '✓ Préférences enregistrées';
+        setTimeout(() => { if (status) status.textContent = ''; }, 1500);
+      }
+    }, 400);
+  });
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   const birthdate = localStorage.getItem('baby_birthdate');
   if (birthdate) document.getElementById('baby-birthdate').value = birthdate;
@@ -862,6 +887,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('preset-chips').addEventListener('click', onPresetClick);
   renderPresets();
 
+  setupGeneralPrefs();
   initSpeech();
 });
 

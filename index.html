@@ -52,8 +52,17 @@
 
     <div class="precisions-block">
       <label class="precisions-label">
-        Précisions (optionnel)
-        <span class="precisions-hint">Ex : « sans poisson, on aime les pâtes, pas de champignons »</span>
+        Préférences générales (optionnel)
+        <span class="precisions-hint">Ce qui change peu — allergies, régime, dégoûts persistants. Sauvegardé automatiquement.</span>
+      </label>
+      <textarea id="general-prefs" rows="2" placeholder="Ex : sans fruits de mer, on est végétariens, mon mari déteste les champignons..."></textarea>
+      <div id="general-prefs-status" class="speech-status"></div>
+    </div>
+
+    <div class="precisions-block">
+      <label class="precisions-label">
+        Précisions du jour (optionnel)
+        <span class="precisions-hint">Ce que tu veux pour CETTE semaine. Ex : « 1 quiche, 1 plat avec du riz, au moins 1 fois poulet »</span>
       </label>
       <div class="precisions-input">
         <textarea id="precisions" rows="2" placeholder="Tapez ou cliquez sur le micro pour parler..."></textarea>
@@ -65,17 +74,6 @@
         <div id="preset-chips" class="preset-chips"></div>
       </div>
     </div>
-
-    <details>
-      <summary>Préférences alimentaires (optionnel)</summary>
-      <div class="row diet-row">
-        <label class="check"><input type="checkbox" name="diet" value="Végétarien"> Végétarien</label>
-        <label class="check"><input type="checkbox" name="diet" value="Vegan"> Vegan</label>
-        <label class="check"><input type="checkbox" name="diet" value="Sans gluten"> Sans gluten</label>
-        <label class="check"><input type="checkbox" name="diet" value="Sans PLV"> Sans lactose</label>
-        <label class="check"><input type="checkbox" name="diet" value="Sans oeuf"> Sans œuf</label>
-      </div>
-    </details>
 
     <button type="submit" id="submit-btn">✨ Générer mon menu</button>
   </form>
